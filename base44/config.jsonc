@@ -1,0 +1,8 @@
+{
+  "name": "patchforge-starter",
+  "description": "Human-gated security remediation starter",
+  "visibility": "private",
+  "site": {
+    "outputDirectory": "./public"
+  }
+}

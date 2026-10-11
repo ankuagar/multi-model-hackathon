@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#101713" />
+  <title>PatchForge — Security remediation with evidence</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #101713;
+      color: #eef4ee;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 78% 8%, rgba(95, 186, 124, .13), transparent 35%),
+        #101713;
+    }
+    .shell { max-width: 1120px; margin: 0 auto; padding: 32px 28px 60px; }
+    header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 72px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 720; letter-spacing: -.03em; }
+    .mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #b7f29a; color: #18221a; font-size: 15px; font-weight: 900; }
+    .tag { border: 1px solid #33423a; color: #b0c0b4; border-radius: 999px; padding: 8px 12px; font-size: 12px; }
+    .hero { max-width: 760px; padding-bottom: 54px; }
+    .eyebrow { color: #b7f29a; font: 700 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 18px 0; max-width: 730px; font-size: clamp(44px, 8vw, 76px); line-height: .99; letter-spacing: -.065em; }
+    .intro { max-width: 640px; color: #aab8ad; font-size: 18px; line-height: 1.65; }
+    .board { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .panel { border: 1px solid #2c3a31; border-radius: 18px; background: rgba(22, 31, 25, .88); padding: 24px; }
+    .panel h2 { margin: 0 0 20px; font-size: 13px; color: #9eada1; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+    .alert-title { margin: 0; font-size: 21px; letter-spacing: -.025em; }
+    .muted { color: #9eada1; }
+    .alert-meta { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+    .pill { padding: 6px 10px; background: #222f27; border-radius: 999px; color: #bfccbf; font-size: 12px; }
+    .pill.high { color: #ffc18f; background: #3b2b20; }
+    .pipeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .step { min-height: 92px; border: 1px solid #34433a; border-radius: 12px; padding: 12px; }
+    .step .num { color: #b7f29a; font: 700 11px ui-monospace, monospace; }
+    .step strong { display: block; margin-top: 11px; font-size: 13px; }
+    .gate { margin-top: 18px; border-left: 2px solid #b7f29a; padding: 3px 0 3px 14px; color: #bdc9bf; font-size: 13px; line-height: 1.5; }
+    footer { margin-top: 22px; color: #819086; font-size: 12px; }
+    @media (max-width: 720px) {
+      header { padding-bottom: 50px; }
+      .board { grid-template-columns: 1fr; }
+      .pipeline { grid-template-columns: repeat(2, 1fr); }
+      .shell { padding-inline: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand"><span class="mark">P</span><span>PatchForge</span></div>
+      <span class="tag">Starter · private preview</span>
+    </header>
+    <section class="hero">
+      <div class="eyebrow">Security remediation, with evidence</div>
+      <h1>Fix the alert.<br />Show the proof.</h1>
+      <p class="intro">PatchForge coordinates specialist agents and deterministic checks to prepare security fixes people can review with confidence. A human stays in control before anything ships.</p>
+    </section>
+    <section class="board" aria-label="PatchForge workflow preview">
+      <article class="panel">
+        <h2>Seeded alert · demo scope</h2>
+        <p class="alert-title">SQL injection in user lookup</p>
+        <p class="muted">A controlled example will follow an unsafe query from alert to proposed remediation.</p>
+        <div class="alert-meta">
+          <span class="pill high">High severity</span>
+          <span class="pill">Web flaw</span>
+          <span class="pill">Isolated demo</span>
+        </div>
+      </article>
+      <article class="panel">
+        <h2>Evidence workflow · not yet running</h2>
+        <div class="pipeline">
+          <div class="step"><span class="num">01</span><strong>Triage</strong></div>
+          <div class="step"><span class="num">02</span><strong>Patch proposal</strong></div>
+          <div class="step"><span class="num">03</span><strong>Adversarial review</strong></div>
+          <div class="step"><span class="num">04</span><strong>Tests &amp; security checks</strong></div>
+          <div class="step"><span class="num">05</span><strong>Controlled exploit probe</strong></div>
+          <div class="step"><span class="num">06</span><strong>Human approval</strong></div>
+        </div>
+        <div class="gate">A passing check prepares a reviewable change. It does not prove the whole system is secure or ship a patch automatically.</div>
+      </article>
+    </section>
+    <footer>PatchForge MVP · TypeScript workflow contract in the project source</footer>
+  </main>
+</body>
+</html>

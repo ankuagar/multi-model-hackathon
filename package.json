@@ -1,0 +1,13 @@
+{
+  "name": "patchforge-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Human-gated security remediation starter for Base44",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
