@@ -38,7 +38,7 @@ export interface CheckResult {
   details?: string;
 }
 export interface Evidence {
-  kind: "triage" | "patch" | "adversarial_review" | "check" | "pull_request";
+  kind: "triage" | "patch" | "adversarial_review" | "check" | "pull_request" | "human_decision";
   producer: string;
   summary: string;
   passed?: boolean;
@@ -179,6 +179,24 @@ export class RemediationOrchestrator {
       throw new Error("Only a run awaiting human review can be approved");
     }
     this.transition(run, "approved", "Human reviewer approved the remediation");
+  }
+
+  /** Records an explicit human exception for a blocked run; it never merges or deploys. */
+  approveWithException(run: RemediationRun, reason: string): void {
+    if (run.state !== "blocked") {
+      throw new Error("Exception approval is only available for a blocked run");
+    }
+    const decision = reason.trim();
+    if (!decision) {
+      throw new Error("A reason is required to approve a blocked remediation");
+    }
+    this.addEvidence(run, {
+      kind: "human_decision",
+      producer: "human_reviewer",
+      summary: `Approved with exception: ${decision}`,
+      passed: true,
+    });
+    this.transition(run, "approved", `Human reviewer approved with exception: ${decision}`);
   }
 
   private transition(run: RemediationRun, state: RunState, message: string): void {

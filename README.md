@@ -3,7 +3,11 @@
 PatchForge is a human-gated security remediation prototype targeting Base44.
 The first interactive feature runs a seeded SQL injection alert through a
 simulated triage agent, repair agent, adversarial reviewer, and deterministic
-fixture checks. The user can inspect the proposed diff and record an approval.
+fixture checks. Users can choose a standard pass, a recoverable first attempt,
+or a persistent failure that escalates for human investigation. The user can
+inspect the proposed diff and record an approval when evidence gates pass. A
+blocked run can only be approved through a separate human exception action with
+a required reason, which is added to the evidence trail.
 
 This is a client-side demo. Its agents and checks are fixtures: it does not
 connect to a repository, execute SQL, run a real exploit, or perform a security

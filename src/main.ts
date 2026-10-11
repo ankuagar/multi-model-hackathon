@@ -24,6 +24,8 @@ const alert: SecurityAlert = {
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+type DemoScenario = "standard" | "recoverable" | "persistent";
+let demoScenario: DemoScenario = "standard";
 
 const triageAgent: TriageAgent = {
   async triage() {
@@ -39,20 +41,27 @@ const triageAgent: TriageAgent = {
 };
 
 const repairAgent: RepairAgent = {
-  async propose(_alert, _triage, _feedback): Promise<Patch> {
+  async propose(_alert, _triage, feedback): Promise<Patch> {
     await sleep(320);
+    const safePatch = demoScenario === "standard" || (demoScenario === "recoverable" && feedback.length > 0);
     return {
       changedFiles: [alert.filePath],
-      rationale: "Bind the email value as a query parameter so it is treated as data.",
+      rationale: safePatch
+        ? "Bind the email value as a query parameter so it is treated as data."
+        : "Simulated flawed attempt: the user value is still interpolated into SQL.",
       diff: [
         "diff --git a/src/users.ts b/src/users.ts",
         "--- a/src/users.ts",
         "+++ b/src/users.ts",
         "@@ -40,2 +40,2 @@ export async function findUser(email: string) {",
-        "-  const query = `SELECT * FROM users WHERE email = '${email}'`;",
-        "-  return db.query(query);",
-        "+  const query = \"SELECT * FROM users WHERE email = ?\";",
-        "+  return db.query(query, [email]);",
+        safePatch
+          ? "-  const query = `SELECT * FROM users WHERE email = '${email}'`;"
+          : "+  const query = `SELECT * FROM users WHERE email = '${email}'`;",
+        safePatch ? "-  return db.query(query);" : "+  return db.query(query);",
+        ...(safePatch ? [
+          "+  const query = \"SELECT * FROM users WHERE email = ?\";",
+          "+  return db.query(query, [email]);",
+        ] : []),
       ].join("\n"),
     };
   },
@@ -162,12 +171,25 @@ app.innerHTML = `
               <div><span class="overline">Remediation run</span><h2 id="run-title">Ready to start</h2></div>
               <span id="run-state" class="state-badge">Not started</span>
             </div>
+            <label class="scenario-control" for="scenario-select">Demo scenario
+              <select id="scenario-select">
+                <option value="standard">Standard pass</option>
+                <option value="recoverable">One failed attempt, then repair</option>
+                <option value="persistent">Repeated failure, escalate to human</option>
+              </select>
+              <small id="scenario-help">Fixture agents produce a safe patch and pass the checks.</small>
+            </label>
             <div id="pipeline" class="pipeline" aria-live="polite"></div>
             <div class="actions">
               <button id="start-run" class="button primary" type="button">Start demo run</button>
               <button id="approve-run" class="button secondary" type="button" disabled>Approve demo patch</button>
             </div>
             <p id="action-note" class="action-note">Approval records a decision in this page only. It does not merge or deploy code.</p>
+            <div id="exception-box" class="exception-box" hidden>
+              <label for="exception-reason">Human review reason</label>
+              <textarea id="exception-reason" rows="3" placeholder="Explain why you are approving despite failed evidence"></textarea>
+              <small>This records an explicit exception in the evidence trail. It does not merge or deploy code.</small>
+            </div>
           </article>
           <article class="panel evidence-panel">
             <div class="section-head"><span class="overline">Evidence trail</span><span id="attempts" class="muted small"></span></div>
@@ -198,6 +220,21 @@ const pipeline = document.querySelector<HTMLDivElement>("#pipeline")!;
 const evidence = document.querySelector<HTMLDivElement>("#evidence")!;
 const attempts = document.querySelector<HTMLSpanElement>("#attempts")!;
 const actionNote = document.querySelector<HTMLParagraphElement>("#action-note")!;
+const scenarioSelect = document.querySelector<HTMLSelectElement>("#scenario-select")!;
+const scenarioHelp = document.querySelector<HTMLElement>("#scenario-help")!;
+const exceptionBox = document.querySelector<HTMLDivElement>("#exception-box")!;
+const exceptionReason = document.querySelector<HTMLTextAreaElement>("#exception-reason")!;
+
+const scenarioDescriptions: Record<DemoScenario, string> = {
+  standard: "Fixture agents produce a safe patch and pass the checks.",
+  recoverable: "The first patch is intentionally unsafe. Review and checks should trigger one repair retry.",
+  persistent: "Every proposed patch is intentionally unsafe. The retry limit should block approval and escalate to a human.",
+};
+
+scenarioSelect.addEventListener("change", () => {
+  demoScenario = scenarioSelect.value as DemoScenario;
+  scenarioHelp.textContent = scenarioDescriptions[demoScenario];
+});
 
 function renderRun(run?: RemediationRun) {
   if (!run) {
@@ -218,11 +255,22 @@ function renderRun(run?: RemediationRun) {
   runState.textContent = run.state.replaceAll("_", " ");
   runState.className = `state-badge ${run.state === "blocked" ? "blocked" : run.state === "approved" ? "approved" : "ready"}`;
   attempts.textContent = `${run.repairAttempts} repair retries`;
-  approveButton.disabled = run.state !== "awaiting_human";
-  approveButton.textContent = run.state === "approved" ? "Approval recorded" : "Approve demo patch";
+  exceptionBox.hidden = run.state !== "blocked";
+  approveButton.disabled = run.state === "awaiting_human"
+    ? false
+    : run.state === "blocked"
+      ? exceptionReason.value.trim().length === 0
+      : true;
+  approveButton.textContent = run.state === "approved"
+    ? "Approval recorded"
+    : run.state === "blocked"
+      ? "Approve with exception"
+      : "Approve demo patch";
   actionNote.textContent = run.state === "awaiting_human"
     ? "Review the diff and evidence before recording approval. This action stays in the browser."
-    : "Approval records a decision in this page only. It does not merge or deploy code.";
+    : run.state === "blocked"
+      ? "The evidence gate is blocked. A human can record an exception approval with a required reason."
+      : "Approval records a decision in this page only. It does not merge or deploy code.";
 
   const evidenceHtml = run.evidence.map((item) => {
     const badge = item.passed === true ? "PASS" : item.passed === false ? "REVIEW" : "RECORDED";
@@ -241,9 +289,18 @@ function renderRun(run?: RemediationRun) {
 
 renderRun();
 
+exceptionReason.addEventListener("input", () => {
+  if (currentRun?.state === "blocked") {
+    approveButton.disabled = exceptionReason.value.trim().length === 0;
+  }
+});
+
 startButton.addEventListener("click", async () => {
   startButton.disabled = true;
+  scenarioSelect.disabled = true;
   approveButton.disabled = true;
+  exceptionBox.hidden = true;
+  exceptionReason.value = "";
   startButton.textContent = "Running fixture agents…";
   runState.textContent = "running";
   runState.className = "state-badge running";
@@ -258,13 +315,18 @@ startButton.addEventListener("click", async () => {
     startButton.textContent = "Retry demo";
   } finally {
     startButton.disabled = false;
+    scenarioSelect.disabled = false;
   }
 });
 
 approveButton.addEventListener("click", () => {
   if (!currentRun) return;
   try {
-    orchestrator.approve(currentRun);
+    if (currentRun.state === "blocked") {
+      orchestrator.approveWithException(currentRun, exceptionReason.value);
+    } else {
+      orchestrator.approve(currentRun);
+    }
     renderRun(currentRun);
   } catch (error) {
     actionNote.textContent = error instanceof Error ? error.message : "Approval could not be recorded.";
