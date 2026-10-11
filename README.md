@@ -1,17 +1,21 @@
 # PatchForge
 
 PatchForge is a human-gated security remediation prototype targeting Base44.
-The first interactive feature runs a seeded SQL injection alert through a
+The interactive demo includes seeded examples for SQL injection, reflected XSS,
+hardcoded secrets, and vulnerable dependencies. Each alert runs through a
 simulated triage agent, repair agent, adversarial reviewer, and deterministic
-fixture checks. Users can choose a standard pass, a recoverable first attempt,
+diff-marker checks. Users can choose a standard pass, a recoverable first attempt,
 or a persistent failure that escalates for human investigation. The user can
 inspect the proposed diff and record an approval when evidence gates pass. A
 blocked run can only be approved through a separate human exception action with
 a required reason, which is added to the evidence trail.
+Run history persists in browser storage, and each selected run can be exported
+as a JSON evidence bundle for review.
 
 This is a client-side demo. Its agents and checks are fixtures: it does not
 connect to a repository, execute SQL, run a real exploit, or perform a security
-scan. Run state resets on page reload. Approval does not merge or deploy code.
+scan. History is local to the browser and can be cleared with its site data.
+Approval does not merge or deploy code.
 
 The workflow contract lives in [`src/workflow.ts`](src/workflow.ts), and the
 interactive demo is in [`src/main.ts`](src/main.ts). Base44 settings live in

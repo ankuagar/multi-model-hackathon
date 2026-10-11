@@ -11,28 +11,145 @@ import {
   type Validator,
 } from "./workflow";
 
-const alert: SecurityAlert = {
-  id: "DEMO-SQLI-001",
-  ruleId: "PATCHFORGE-SQLI-001",
-  title: "SQL injection in user lookup",
-  severity: "high",
-  repository: "demo/unsafe-users-api",
-  commit: "fixture-a84d12c",
-  filePath: "src/users.ts",
-  line: 42,
-  description: "User supplied email is concatenated into a SQL query.",
-};
+interface VulnerabilityExample {
+  alert: SecurityAlert;
+  vulnerabilityClass: string;
+  triageSummary: string;
+  safeMarker: string;
+  unsafeMarker: string;
+  safeRationale: string;
+  unsafeRationale: string;
+  safeDiff: string[];
+  unsafeDiff: string[];
+  reviewTitle: string;
+  reviewDetail: string;
+  checkName: string;
+}
+
+const examples: VulnerabilityExample[] = [
+  {
+    alert: {
+      id: "DEMO-SQLI-001", ruleId: "PATCHFORGE-SQLI-001", title: "SQL injection in user lookup",
+      severity: "high", repository: "demo/unsafe-users-api", commit: "fixture-a84d12c",
+      filePath: "src/users.ts", line: 42, description: "User supplied email is concatenated into a SQL query.",
+    },
+    vulnerabilityClass: "SQL injection", triageSummary: "The user lookup builds a SQL statement with interpolated input. A parameterized query is the narrowest fix.",
+    safeMarker: "db.query(query, [email])", unsafeMarker: "email = '${email}'",
+    safeRationale: "Bind the email value as a query parameter so it is treated as data.",
+    unsafeRationale: "Simulated flawed attempt: the user value is still interpolated into SQL.",
+    safeDiff: [
+      "diff --git a/src/users.ts b/src/users.ts", "--- a/src/users.ts", "+++ b/src/users.ts",
+      "@@ -40,2 +40,2 @@ export async function findUser(email: string) {",
+      "-  const query = `SELECT * FROM users WHERE email = '${email}'`;", "-  return db.query(query);",
+      "+  const query = \"SELECT * FROM users WHERE email = ?\";", "+  return db.query(query, [email]);",
+    ],
+    unsafeDiff: [
+      "diff --git a/src/users.ts b/src/users.ts", "--- a/src/users.ts", "+++ b/src/users.ts",
+      "@@ -40,2 +40,2 @@ export async function findUser(email: string) {",
+      "+  const query = `SELECT * FROM users WHERE email = '${email}'`;", "+  return db.query(query);",
+    ],
+    reviewTitle: "User input may still be interpolated", reviewDetail: "The proposed diff must bind the email as a query parameter.",
+    checkName: "SQL injection pattern fixture",
+  },
+  {
+    alert: {
+      id: "DEMO-XSS-001", ruleId: "PATCHFORGE-XSS-001", title: "Reflected XSS in search preview",
+      severity: "high", repository: "demo/unsafe-search-ui", commit: "fixture-51c2b70",
+      filePath: "src/search.ts", line: 18, description: "A search term is inserted into an HTML preview without safe text handling.",
+    },
+    vulnerabilityClass: "Cross-site scripting (XSS)", triageSummary: "The search preview treats user input as markup. Render the value as text so the browser does not parse it as HTML.",
+    safeMarker: "preview.textContent = searchTerm", unsafeMarker: "preview.innerHTML = searchTerm",
+    safeRationale: "Use the DOM text API so user supplied text is rendered as data, not markup.",
+    unsafeRationale: "Simulated flawed attempt: user supplied text is still assigned as HTML.",
+    safeDiff: [
+      "diff --git a/src/search.ts b/src/search.ts", "--- a/src/search.ts", "+++ b/src/search.ts",
+      "@@ -16,1 +16,1 @@ export function renderPreview(searchTerm: string) {",
+      "-  preview.innerHTML = searchTerm;", "+  preview.textContent = searchTerm;",
+    ],
+    unsafeDiff: [
+      "diff --git a/src/search.ts b/src/search.ts", "--- a/src/search.ts", "+++ b/src/search.ts",
+      "@@ -16,1 +16,1 @@ export function renderPreview(searchTerm: string) {",
+      "+  preview.innerHTML = searchTerm;",
+    ],
+    reviewTitle: "Untrusted input is still parsed as HTML", reviewDetail: "The proposed diff should render the search value as text rather than assigning it to innerHTML.",
+    checkName: "XSS output encoding fixture",
+  },
+  {
+    alert: {
+      id: "DEMO-SECRET-001", ruleId: "PATCHFORGE-SECRET-001", title: "Credential committed in deployment config",
+      severity: "critical", repository: "demo/unsafe-deploy-config", commit: "fixture-9e482a1",
+      filePath: "src/cloudConfig.ts", line: 7, description: "A synthetic static credential is present in tracked application configuration.",
+    },
+    vulnerabilityClass: "Hardcoded secret", triageSummary: "A credential-like value is stored in tracked configuration. Read it from the runtime secret store and rotate any real exposed credential.",
+    safeMarker: 'secrets.get("cloud/access-key")', unsafeMarker: "STATIC_FIXTURE_CREDENTIAL",
+    safeRationale: "Remove the synthetic literal and read the credential from the runtime secret store; rotate any real exposed key.",
+    unsafeRationale: "Simulated flawed attempt: a static credential remains in tracked configuration.",
+    safeDiff: [
+      "diff --git a/src/cloudConfig.ts b/src/cloudConfig.ts", "--- a/src/cloudConfig.ts", "+++ b/src/cloudConfig.ts",
+      "@@ -7,1 +7,1 @@ cloud configuration", '-const CLOUD_ACCESS_KEY = "STATIC_FIXTURE_CREDENTIAL";',
+      '+const CLOUD_ACCESS_KEY = secrets.get("cloud/access-key");',
+    ],
+    unsafeDiff: [
+      "diff --git a/src/cloudConfig.ts b/src/cloudConfig.ts", "--- a/src/cloudConfig.ts", "+++ b/src/cloudConfig.ts",
+      "@@ -7,1 +7,1 @@ cloud configuration", '+const CLOUD_ACCESS_KEY = "STATIC_FIXTURE_CREDENTIAL";',
+    ],
+    reviewTitle: "Static credential remains in the change", reviewDetail: "The proposed diff should remove the tracked credential and refer to the runtime secret store.",
+    checkName: "Secret removal fixture",
+  },
+  {
+    alert: {
+      id: "DEMO-DEP-001", ruleId: "PATCHFORGE-DEP-001", title: "Vulnerable authentication dependency",
+      severity: "high", repository: "demo/unsafe-auth-service", commit: "fixture-36ad882",
+      filePath: "package.json", line: 24, description: "The fixture advisory marks demo-auth 1.4.2 as vulnerable; 2.1.0 is the simulated fixed release.",
+    },
+    vulnerabilityClass: "Vulnerable dependency", triageSummary: "The manifest pins demo-auth to a fixture version affected by an advisory. Upgrade to the simulated fixed release and rerun dependency checks.",
+    safeMarker: '"demo-auth": "2.1.0"', unsafeMarker: '"demo-auth": "1.4.2"',
+    safeRationale: "Upgrade demo-auth to the fixture's fixed release and recheck the dependency advisory.",
+    unsafeRationale: "Simulated flawed attempt: the manifest still selects the vulnerable fixture release.",
+    safeDiff: [
+      "diff --git a/package.json b/package.json", "--- a/package.json", "+++ b/package.json",
+      "@@ -24,1 +24,1 @@ dependencies", '-  "demo-auth": "1.4.2",', '+  "demo-auth": "2.1.0",',
+    ],
+    unsafeDiff: [
+      "diff --git a/package.json b/package.json", "--- a/package.json", "+++ b/package.json",
+      "@@ -24,1 +24,1 @@ dependencies", '+  "demo-auth": "1.4.2",',
+    ],
+    reviewTitle: "Vulnerable dependency version remains", reviewDetail: "The proposed manifest change should select the simulated fixed release.",
+    checkName: "Dependency advisory fixture",
+  },
+];
+let selectedAlert = examples[0].alert;
+const profileFor = (alert: SecurityAlert) => examples.find((example) => example.alert.id === alert.id) ?? examples[0];
+const HISTORY_KEY = "patchforge.run-history.v1";
+const HISTORY_LIMIT = 20;
+
+function loadRunHistory(): RemediationRun[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((item): item is RemediationRun =>
+      !!item && typeof item === "object" && typeof item.id === "string" &&
+      typeof item.state === "string" && item.alert && Array.isArray(item.evidence) &&
+      Array.isArray(item.events) && Array.isArray(item.checks) && Array.isArray(item.reviewFindings),
+    ).slice(0, HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+let runHistory = loadRunHistory();
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 type DemoScenario = "standard" | "recoverable" | "persistent";
 let demoScenario: DemoScenario = "standard";
 
 const triageAgent: TriageAgent = {
-  async triage() {
+  async triage(alert) {
     await sleep(260);
+    const profile = profileFor(alert);
     return {
-      vulnerabilityClass: "SQL injection",
-      summary: "The user lookup builds a SQL statement with interpolated input. A parameterized query is the narrowest fix.",
+      vulnerabilityClass: profile.vulnerabilityClass,
+      summary: profile.triageSummary,
       affectedFiles: [alert.filePath],
       complexity: "low",
       confidence: 0.96,
@@ -41,80 +158,61 @@ const triageAgent: TriageAgent = {
 };
 
 const repairAgent: RepairAgent = {
-  async propose(_alert, _triage, feedback): Promise<Patch> {
+  async propose(alert, _triage, feedback): Promise<Patch> {
     await sleep(320);
+    const profile = profileFor(alert);
     const safePatch = demoScenario === "standard" || (demoScenario === "recoverable" && feedback.length > 0);
     return {
       changedFiles: [alert.filePath],
-      rationale: safePatch
-        ? "Bind the email value as a query parameter so it is treated as data."
-        : "Simulated flawed attempt: the user value is still interpolated into SQL.",
-      diff: [
-        "diff --git a/src/users.ts b/src/users.ts",
-        "--- a/src/users.ts",
-        "+++ b/src/users.ts",
-        "@@ -40,2 +40,2 @@ export async function findUser(email: string) {",
-        safePatch
-          ? "-  const query = `SELECT * FROM users WHERE email = '${email}'`;"
-          : "+  const query = `SELECT * FROM users WHERE email = '${email}'`;",
-        safePatch ? "-  return db.query(query);" : "+  return db.query(query);",
-        ...(safePatch ? [
-          "+  const query = \"SELECT * FROM users WHERE email = ?\";",
-          "+  return db.query(query, [email]);",
-        ] : []),
-      ].join("\n"),
+      rationale: safePatch ? profile.safeRationale : profile.unsafeRationale,
+      diff: (safePatch ? profile.safeDiff : profile.unsafeDiff).join("\n"),
     };
   },
 };
 
 const adversarialReviewer: AdversarialReviewer = {
-  async review(_alert, patch) {
+  async review(alert, patch) {
     await sleep(260);
-    const usesParameter = patch.diff.includes("WHERE email = ?") && patch.diff.includes("db.query(query, [email])");
-    return usesParameter ? [] : [{
+    const profile = profileFor(alert);
+    const additions = patch.diff.split("\n").filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+    const addedText = additions.join("\n");
+    const safePatch = addedText.includes(profile.safeMarker) && !addedText.includes(profile.unsafeMarker);
+    return safePatch ? [] : [{
       severity: "high",
-      title: "User input may still be interpolated",
-      detail: "The proposed diff does not show both a placeholder and a bound value.",
+      title: profile.reviewTitle,
+      detail: profile.reviewDetail,
       filePath: alert.filePath,
     }];
   },
 };
 
-function toyUnsafeLookup(email: string, rows: Array<{ email: string }>) {
-  return email === "' OR '1'='1" ? rows : rows.filter((row) => row.email === email);
-}
-
-function toyParameterizedLookup(email: string, rows: Array<{ email: string }>) {
-  return rows.filter((row) => row.email === email);
-}
-
 const validator: Validator = {
-  async validate(_alert, patch): Promise<CheckResult[]> {
+  async validate(alert, patch): Promise<CheckResult[]> {
     await sleep(320);
-    const bindsValue = patch.diff.includes("WHERE email = ?") && patch.diff.includes("db.query(query, [email])");
-    const rows = [{ email: "alice@example.test" }, { email: "bob@example.test" }];
-    const payload = "' OR '1'='1";
-    const vulnerableFixtureExposed = toyUnsafeLookup(payload, rows).length > 0;
-    const patchedFixtureBlocked = toyParameterizedLookup(payload, rows).length === 0;
+    const profile = profileFor(alert);
+    const additions = patch.diff.split("\n").filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+    const addedText = additions.join("\n");
+    const safePatternPresent = addedText.includes(profile.safeMarker);
+    const unsafePatternAbsent = !addedText.includes(profile.unsafeMarker);
+    const fixturePassed = safePatternPresent && unsafePatternAbsent;
     return [
       {
-        name: "Parameterized query review",
-        passed: bindsValue,
-        summary: bindsValue ? "Placeholder and bound value are present in the proposed diff." : "The expected parameter binding was not found.",
+        name: profile.checkName,
+        passed: fixturePassed,
+        summary: fixturePassed ? "The simulated patch contains the expected remediation and omits the unsafe pattern." : "The patch did not satisfy the fixture's remediation markers.",
+        details: "Deterministic diff inspection only; this does not run the target application or a real security scanner.",
       },
       {
-        name: "SQLi regression fixture",
-        passed: vulnerableFixtureExposed && patchedFixtureBlocked,
-        summary: vulnerableFixtureExposed && patchedFixtureBlocked
-          ? "The toy fixture reproduces the unsafe case and blocks the payload with the patched lookup."
-          : "The toy regression case did not behave as expected.",
-        details: "In-memory behavior simulation only; this does not execute SQL or test a real database.",
+        name: "Adversarial patch assertions",
+        passed: safePatternPresent && unsafePatternAbsent,
+        summary: safePatternPresent && unsafePatternAbsent ? "Expected safe marker found; unsafe marker absent from added lines." : "Expected safe marker missing or unsafe marker remains in added lines.",
+        details: `Fixture vulnerability class: ${profile.vulnerabilityClass}. No exploit or target code is executed.`,
       },
       {
         name: "Demo workflow assertions",
-        passed: bindsValue && patchedFixtureBlocked,
-        summary: bindsValue && patchedFixtureBlocked ? "All seeded demo assertions passed." : "One or more seeded demo assertions failed.",
-        details: "These are deterministic fixture checks, not repository tests or a security scan.",
+        passed: fixturePassed,
+        summary: fixturePassed ? "All seeded demo assertions passed." : "One or more seeded demo assertions failed.",
+        details: "These are deterministic diff fixtures, not repository tests or a security scan.",
       },
     ];
   },
@@ -146,23 +244,26 @@ app.innerHTML = `
       <section class="hero">
         <div class="eyebrow">Security remediation, with evidence</div>
         <h1>Fix the alert.<br />Show the proof.</h1>
-        <p class="intro">Run a seeded SQL injection issue through triage, repair, independent review, and deterministic fixture checks. Inspect the evidence, then record a human approval.</p>
+        <p class="intro">Choose a seeded security alert and run it through triage, repair, independent review, and deterministic fixture checks. Inspect the evidence, then record a human approval.</p>
       </section>
       <section class="workspace">
         <aside class="column">
           <article class="panel alert-panel">
-            <div class="section-head"><span class="overline">Seeded alert</span><span class="severity">HIGH</span></div>
-            <h2>${escapeHtml(alert.title)}</h2>
-            <p class="muted">${escapeHtml(alert.description)}</p>
+            <div class="section-head"><span class="overline">Seeded alert</span><span id="alert-severity" class="severity">HIGH</span></div>
+            <label class="scenario-control alert-picker" for="alert-select">Vulnerability example
+              <select id="alert-select">${examples.map((example) => `<option value="${escapeHtml(example.alert.id)}">${escapeHtml(profileFor(example.alert).vulnerabilityClass)}</option>`).join("")}</select>
+            </label>
+            <h2 id="alert-title"></h2>
+            <p id="alert-description" class="muted"></p>
             <dl class="facts">
-              <div><dt>Repository</dt><dd>${escapeHtml(alert.repository)}</dd></div>
-              <div><dt>Location</dt><dd>${escapeHtml(alert.filePath)}:${alert.line}</dd></div>
-              <div><dt>Rule</dt><dd>${escapeHtml(alert.ruleId)}</dd></div>
+              <div><dt>Repository</dt><dd id="alert-repository"></dd></div>
+              <div><dt>Location</dt><dd id="alert-location"></dd></div>
+              <div><dt>Rule</dt><dd id="alert-rule"></dd></div>
             </dl>
           </article>
           <article class="panel safety-note">
             <span class="overline">Demo boundaries</span>
-            <p>This run uses fixture agents and an in-memory behavior simulation. It does not connect to a repository, execute SQL, run a real exploit, or perform a security scan.</p>
+            <p>All vulnerability examples use fixture agents and diff-marker checks. Nothing connects to a repository, executes an exploit, or runs a real security scan.</p>
           </article>
         </aside>
         <section class="column main-column">
@@ -190,6 +291,14 @@ app.innerHTML = `
               <textarea id="exception-reason" rows="3" placeholder="Explain why you are approving despite failed evidence"></textarea>
               <small>This records an explicit exception in the evidence trail. It does not merge or deploy code.</small>
             </div>
+            <div class="history-tools">
+              <label for="run-history">Recent runs</label>
+              <select id="run-history" aria-label="Open a saved remediation run">
+                <option value="">No saved runs yet</option>
+              </select>
+              <button id="export-evidence" class="button secondary" type="button" disabled>Export evidence JSON</button>
+              <small id="history-status">Run history is stored in this browser only.</small>
+            </div>
           </article>
           <article class="panel evidence-panel">
             <div class="section-head"><span class="overline">Evidence trail</span><span id="attempts" class="muted small"></span></div>
@@ -197,7 +306,7 @@ app.innerHTML = `
           </article>
         </section>
       </section>
-      <footer>PatchForge prototype · run state is held in this browser tab and resets on reload</footer>
+      <footer>PatchForge prototype · demo run history is stored in this browser only</footer>
     </main>
   </div>
 `;
@@ -224,6 +333,65 @@ const scenarioSelect = document.querySelector<HTMLSelectElement>("#scenario-sele
 const scenarioHelp = document.querySelector<HTMLElement>("#scenario-help")!;
 const exceptionBox = document.querySelector<HTMLDivElement>("#exception-box")!;
 const exceptionReason = document.querySelector<HTMLTextAreaElement>("#exception-reason")!;
+const historySelect = document.querySelector<HTMLSelectElement>("#run-history")!;
+const exportButton = document.querySelector<HTMLButtonElement>("#export-evidence")!;
+const historyStatus = document.querySelector<HTMLElement>("#history-status")!;
+const alertSelect = document.querySelector<HTMLSelectElement>("#alert-select")!;
+const alertSeverity = document.querySelector<HTMLElement>("#alert-severity")!;
+const alertTitle = document.querySelector<HTMLHeadingElement>("#alert-title")!;
+const alertDescription = document.querySelector<HTMLParagraphElement>("#alert-description")!;
+const alertRepository = document.querySelector<HTMLElement>("#alert-repository")!;
+const alertLocation = document.querySelector<HTMLElement>("#alert-location")!;
+const alertRule = document.querySelector<HTMLElement>("#alert-rule")!;
+
+function renderAlert(alert: SecurityAlert) {
+  alertSeverity.textContent = alert.severity;
+  alertTitle.textContent = alert.title;
+  alertDescription.textContent = alert.description;
+  alertRepository.textContent = alert.repository;
+  alertLocation.textContent = `${alert.filePath}:${alert.line}`;
+  alertRule.textContent = alert.ruleId;
+}
+
+function renderHistory() {
+  const selectedId = currentRun?.id ?? "";
+  historySelect.innerHTML = runHistory.length
+    ? `<option value="">Select a saved run…</option>${runHistory.map((run) => {
+      const date = new Date(run.events.at(-1)?.recordedAt ?? Date.now()).toLocaleString();
+      return `<option value="${escapeHtml(run.id)}">${escapeHtml(run.alert.title)} · ${escapeHtml(run.state.replaceAll("_", " "))} · ${escapeHtml(date)}</option>`;
+    }).join("")}`
+    : `<option value="">No saved runs yet</option>`;
+  historySelect.value = selectedId;
+  exportButton.disabled = !currentRun;
+}
+
+function saveRun(run: RemediationRun) {
+  runHistory = [run, ...runHistory.filter((item) => item.id !== run.id)].slice(0, HISTORY_LIMIT);
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(runHistory));
+    historyStatus.textContent = `Saved locally · ${runHistory.length} of ${HISTORY_LIMIT} recent runs`;
+  } catch {
+    historyStatus.textContent = "Browser storage is unavailable. Export this run to keep its evidence.";
+  }
+  renderHistory();
+}
+
+function exportCurrentRun() {
+  if (!currentRun) return;
+  const bundle = {
+    format: "patchforge-evidence-v1",
+    exportedAt: new Date().toISOString(),
+    limitations: "Client-side demo fixture only. This bundle does not prove system security and contains no live repository or scanner results.",
+    run: currentRun,
+  };
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `patchforge-evidence-${currentRun.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 const scenarioDescriptions: Record<DemoScenario, string> = {
   standard: "Fixture agents produce a safe patch and pass the checks.",
@@ -241,6 +409,16 @@ function renderRun(run?: RemediationRun) {
     pipeline.innerHTML = pipelineSteps.map((step, index) => `
       <div class="step"><span class="step-index">0${index + 1}</span><strong>${step.label}</strong><span class="step-status">Waiting</span></div>
     `).join("");
+    runTitle.textContent = "Ready to start";
+    runState.textContent = "Not started";
+    runState.className = "state-badge";
+    attempts.textContent = "";
+    approveButton.disabled = true;
+    approveButton.textContent = "Approve demo patch";
+    exceptionBox.hidden = true;
+    actionNote.textContent = "Approval records a decision in this page only. It does not merge or deploy code.";
+    evidence.textContent = "Start the demo to see triage notes, review results, checks, and the proposed diff.";
+    renderHistory();
     return;
   }
 
@@ -251,7 +429,7 @@ function renderRun(run?: RemediationRun) {
     return `<div class="step ${complete ? "complete" : ""}"><span class="step-index">0${index + 1}</span><strong>${step.label}</strong><span class="step-status">${status}</span></div>`;
   }).join("");
 
-  runTitle.textContent = run.state === "blocked" ? "Needs human investigation" : "SQL injection demo";
+  runTitle.textContent = run.state === "blocked" ? "Needs human investigation" : run.alert.title;
   runState.textContent = run.state.replaceAll("_", " ");
   runState.className = `state-badge ${run.state === "blocked" ? "blocked" : run.state === "approved" ? "approved" : "ready"}`;
   attempts.textContent = `${run.repairAttempts} repair retries`;
@@ -285,9 +463,36 @@ function renderRun(run?: RemediationRun) {
   const diffHtml = run.patch ? `<div class="result-card"><div class="section-head"><strong>Proposed diff</strong><span class="muted small">${escapeHtml(run.patch.changedFiles.join(", "))}</span></div><pre class="diff">${escapeHtml(run.patch.diff)}</pre><p class="muted">${escapeHtml(run.patch.rationale)}</p></div>` : "";
   const eventHtml = `<details class="event-details"><summary>Run timeline (${run.events.length} events)</summary><ol>${run.events.map((event) => `<li><strong>${escapeHtml(event.state.replaceAll("_", " "))}</strong><span>${escapeHtml(event.message)}</span></li>`).join("")}</ol></details>`;
   evidence.innerHTML = `${triageHtml}${findingsHtml}<div class="result-card"><strong>Recorded evidence</strong><ul class="evidence-list">${evidenceHtml}</ul></div><div class="result-card"><strong>Deterministic fixture checks</strong>${checksHtml || "<p>No check output.</p>"}</div>${diffHtml}${eventHtml}`;
+  renderHistory();
 }
 
 renderRun();
+renderHistory();
+
+historySelect.addEventListener("change", () => {
+  const selected = runHistory.find((run) => run.id === historySelect.value);
+  if (!selected) return;
+  currentRun = selected;
+  selectedAlert = selected.alert;
+  alertSelect.value = selectedAlert.id;
+  renderAlert(selectedAlert);
+  exceptionReason.value = "";
+  renderRun(currentRun);
+  startButton.textContent = "Run demo again";
+});
+
+alertSelect.addEventListener("change", () => {
+  const example = examples.find((item) => item.alert.id === alertSelect.value);
+  if (!example) return;
+  selectedAlert = example.alert;
+  exceptionReason.value = "";
+  renderAlert(selectedAlert);
+  currentRun = undefined;
+  renderRun();
+  startButton.textContent = "Start demo run";
+});
+
+exportButton.addEventListener("click", exportCurrentRun);
 
 exceptionReason.addEventListener("input", () => {
   if (currentRun?.state === "blocked") {
@@ -298,14 +503,21 @@ exceptionReason.addEventListener("input", () => {
 startButton.addEventListener("click", async () => {
   startButton.disabled = true;
   scenarioSelect.disabled = true;
+  alertSelect.disabled = true;
+  historySelect.disabled = true;
+  exportButton.disabled = true;
   approveButton.disabled = true;
+  currentRun = undefined;
+  renderHistory();
+  evidence.textContent = "Running the selected fixture scenario…";
   exceptionBox.hidden = true;
   exceptionReason.value = "";
   startButton.textContent = "Running fixture agents…";
   runState.textContent = "running";
   runState.className = "state-badge running";
   try {
-    currentRun = await orchestrator.run(alert);
+    currentRun = await orchestrator.run(selectedAlert);
+    saveRun(currentRun);
     renderRun(currentRun);
     startButton.textContent = "Run demo again";
   } catch (error) {
@@ -316,6 +528,9 @@ startButton.addEventListener("click", async () => {
   } finally {
     startButton.disabled = false;
     scenarioSelect.disabled = false;
+    alertSelect.disabled = false;
+    historySelect.disabled = false;
+    renderHistory();
   }
 });
 
@@ -327,6 +542,7 @@ approveButton.addEventListener("click", () => {
     } else {
       orchestrator.approve(currentRun);
     }
+    saveRun(currentRun);
     renderRun(currentRun);
   } catch (error) {
     actionNote.textContent = error instanceof Error ? error.message : "Approval could not be recorded.";
