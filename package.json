@@ -1,13 +1,16 @@
 {
   "name": "patchforge-starter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Human-gated security remediation starter for Base44",
+  "description": "Human-gated security remediation prototype for Base44",
   "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0"
   }
 }

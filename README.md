@@ -1,27 +1,33 @@
 # PatchForge
 
-PatchForge is a human-gated security remediation starter targeting Base44. The
-MVP will focus on a seeded SQL injection alert and record triage, patch
-proposals, independent review, deterministic checks, and human approval.
+PatchForge is a human-gated security remediation prototype targeting Base44.
+The first interactive feature runs a seeded SQL injection alert through a
+simulated triage agent, repair agent, adversarial reviewer, and deterministic
+fixture checks. The user can inspect the proposed diff and record an approval.
 
-The hosted preview is a static page in `public/`. The provider-neutral workflow
-contract lives in [`src/workflow.ts`](src/workflow.ts): it defines bounded
-repair attempts and a human approval gate, and never merges or deploys a patch.
-No scanner, model, repository, or sandbox integration is connected yet.
+This is a client-side demo. Its agents and checks are fixtures: it does not
+connect to a repository, execute SQL, run a real exploit, or perform a security
+scan. Run state resets on page reload. Approval does not merge or deploy code.
 
-## Base44 project
+The workflow contract lives in [`src/workflow.ts`](src/workflow.ts), and the
+interactive demo is in [`src/main.ts`](src/main.ts). Base44 settings live in
+[`base44/config.jsonc`](base44/config.jsonc); the site builds to `dist/`.
 
-Base44 project settings are in [`base44/config.jsonc`](base44/config.jsonc).
-The preview is configured as private. To deploy from this directory:
+## Local development
 
 ```sh
 npm install
 npm run typecheck
-npm install --global base44
-base44 login
-base44 link --create --name patchforge-starter --description "Human-gated security remediation starter"
-base44 site deploy --no-build
+npm run dev
 ```
 
-Base44's CLI login links the local checkout to an app in your Base44 workspace.
-Keep the generated `base44/.app.jsonc` out of version control.
+## Deploy updates to Base44
+
+From a checkout linked to the PatchForge Base44 app:
+
+```sh
+base44 site deploy --build
+```
+
+If this is a fresh checkout, sign in and link it to the existing app before
+deploying. The generated `base44/.app.jsonc` file is ignored by Git.

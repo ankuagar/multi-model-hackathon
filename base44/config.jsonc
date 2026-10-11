@@ -3,6 +3,8 @@
   "description": "Human-gated security remediation starter",
   "visibility": "private",
   "site": {
-    "outputDirectory": "./public"
+    "outputDirectory": "./dist",
+    "buildCommand": "npm run build",
+    "serveCommand": "npm run dev"
   }
 }

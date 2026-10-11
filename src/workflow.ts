@@ -108,20 +108,22 @@ export class RemediationOrchestrator {
       maxRepairAttempts: this.maxRepairAttempts,
     };
 
-    run.triage = await this.options.triageAgent.triage(alert);
-    this.addEvidence(run, { kind: "triage", producer: "triage_agent", summary: run.triage.summary });
+    const triage = await this.options.triageAgent.triage(alert);
+    run.triage = triage;
+    this.addEvidence(run, { kind: "triage", producer: "triage_agent", summary: triage.summary });
     this.transition(run, "triaged", "Alert classified and affected files identified");
 
     let feedback: string[] = [];
     while (true) {
-      run.patch = await this.options.repairAgent.propose(alert, run.triage, feedback);
+      const patch = await this.options.repairAgent.propose(alert, triage, feedback);
+      run.patch = patch;
       this.addEvidence(run, {
-        kind: "patch", producer: "repair_agent", summary: run.patch.rationale,
-        artifact: run.patch.diff,
+        kind: "patch", producer: "repair_agent", summary: patch.rationale,
+        artifact: patch.diff,
       });
       this.transition(run, "patched", "Patch proposal recorded");
 
-      run.reviewFindings = await this.options.reviewer.review(alert, run.patch);
+      run.reviewFindings = await this.options.reviewer.review(alert, patch);
       const blockingFindings = run.reviewFindings.filter((finding) =>
         BLOCKING_SEVERITIES.has(finding.severity),
       );
@@ -132,7 +134,7 @@ export class RemediationOrchestrator {
       this.transition(run, "reviewed", "Independent patch review completed");
 
       this.transition(run, "validating", "Deterministic validation started");
-      run.checks = await this.options.validator.validate(alert, run.patch);
+      run.checks = await this.options.validator.validate(alert, patch);
       for (const check of run.checks) {
         this.addEvidence(run, {
           kind: "check", producer: check.name, summary: check.summary, passed: check.passed,
