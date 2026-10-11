@@ -218,12 +218,18 @@ const validator: Validator = {
   },
 };
 
+let currentRun: RemediationRun | undefined;
+
 const orchestrator = new RemediationOrchestrator({
   triageAgent,
   repairAgent,
   reviewer: adversarialReviewer,
   validator,
   maxRepairAttempts: 3,
+  onProgress: (run) => {
+    currentRun = run;
+    renderRun(run);
+  },
 });
 
 const htmlEscapes: Record<string, string> = {
@@ -280,7 +286,7 @@ app.innerHTML = `
               </select>
               <small id="scenario-help">Fixture agents produce a safe patch and pass the checks.</small>
             </label>
-            <div id="pipeline" class="pipeline" aria-live="polite"></div>
+            <div id="pipeline" class="pipeline" aria-label="Six-step remediation workflow" aria-live="polite"></div>
             <div class="actions">
               <button id="start-run" class="button primary" type="button">Start demo run</button>
               <button id="approve-run" class="button secondary" type="button" disabled>Approve demo patch</button>
@@ -312,15 +318,14 @@ app.innerHTML = `
 `;
 
 const pipelineSteps = [
-  { state: "triaged", label: "Triage" },
-  { state: "patched", label: "Patch proposal" },
-  { state: "reviewed", label: "Adversarial review" },
-  { state: "validating", label: "Fixture checks" },
-  { state: "awaiting_human", label: "Human review" },
-  { state: "approved", label: "Approval recorded" },
+  { state: "triaged", label: "Understand the alert", description: "Classify the issue and locate affected code." },
+  { state: "patched", label: "Draft a fix", description: "Propose a focused change for this vulnerability." },
+  { state: "reviewed", label: "Challenge the fix", description: "An independent reviewer looks for weaknesses." },
+  { state: "validating", label: "Run safety checks", description: "Fixture checks inspect the patch for expected changes." },
+  { state: "awaiting_human", label: "Review the evidence", description: "You inspect the diff, findings, and check results." },
+  { state: "approved", label: "Record your decision", description: "Approval is saved in the local audit trail." },
 ] as const;
 
-let currentRun: RemediationRun | undefined;
 const startButton = document.querySelector<HTMLButtonElement>("#start-run")!;
 const approveButton = document.querySelector<HTMLButtonElement>("#approve-run")!;
 const runTitle = document.querySelector<HTMLHeadingElement>("#run-title")!;
@@ -343,6 +348,38 @@ const alertDescription = document.querySelector<HTMLParagraphElement>("#alert-de
 const alertRepository = document.querySelector<HTMLElement>("#alert-repository")!;
 const alertLocation = document.querySelector<HTMLElement>("#alert-location")!;
 const alertRule = document.querySelector<HTMLElement>("#alert-rule")!;
+
+function renderPipeline(run?: RemediationRun) {
+  const eventStates = new Set(run?.events.map((event) => event.state) ?? []);
+  const stateIndex: Partial<Record<RemediationRun["state"], number>> = {
+    received: 0, triaged: 1, patched: 2, repairing: 1, reviewed: 3,
+    validating: 3, awaiting_human: 4, approved: 5, blocked: 3,
+  };
+  const activeIndex = run ? stateIndex[run.state] ?? 0 : -1;
+  pipeline.innerHTML = pipelineSteps.map((step, index) => {
+    const blocked = run?.state === "blocked" && index === 3;
+    const held = run?.state === "blocked" && index > 3;
+    const complete = run?.state === "approved" || (
+      !!run && index < activeIndex && eventStates.has(step.state)
+    );
+    const active = !!run && !complete && !blocked && !held && index === activeIndex;
+    const status = !run ? "Waiting"
+      : blocked ? "Needs attention"
+        : held ? "On hold"
+          : run.state === "approved" && index === 5 ? "Recorded"
+            : run.state === "awaiting_human" && index === 4 ? "Your turn"
+              : complete ? "Complete"
+                : active ? "In progress"
+                  : "Up next";
+    const classes = ["step", complete ? "complete" : "", active ? "current" : "", blocked ? "needs-attention" : "", held ? "on-hold" : ""].filter(Boolean).join(" ");
+    return `<div class="${classes}"${active ? ' aria-current="step"' : ""}>
+      <span class="step-index">STEP ${index + 1}</span>
+      <strong>${step.label}</strong>
+      <p class="step-description">${step.description}</p>
+      <span class="step-status">${status}</span>
+    </div>`;
+  }).join("");
+}
 
 function renderAlert(alert: SecurityAlert) {
   alertSeverity.textContent = alert.severity;
@@ -406,9 +443,7 @@ scenarioSelect.addEventListener("change", () => {
 
 function renderRun(run?: RemediationRun) {
   if (!run) {
-    pipeline.innerHTML = pipelineSteps.map((step, index) => `
-      <div class="step"><span class="step-index">0${index + 1}</span><strong>${step.label}</strong><span class="step-status">Waiting</span></div>
-    `).join("");
+    renderPipeline();
     runTitle.textContent = "Ready to start";
     runState.textContent = "Not started";
     runState.className = "state-badge";
@@ -422,12 +457,7 @@ function renderRun(run?: RemediationRun) {
     return;
   }
 
-  const eventStates = new Set(run.events.map((event) => event.state));
-  pipeline.innerHTML = pipelineSteps.map((step, index) => {
-    const complete = eventStates.has(step.state) || (step.state === "awaiting_human" && run.state === "approved");
-    const status = complete ? "Complete" : run.state === "blocked" ? "Stopped" : "Pending";
-    return `<div class="step ${complete ? "complete" : ""}"><span class="step-index">0${index + 1}</span><strong>${step.label}</strong><span class="step-status">${status}</span></div>`;
-  }).join("");
+  renderPipeline(run);
 
   runTitle.textContent = run.state === "blocked" ? "Needs human investigation" : run.alert.title;
   runState.textContent = run.state.replaceAll("_", " ");

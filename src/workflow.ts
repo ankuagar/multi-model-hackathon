@@ -82,6 +82,7 @@ export interface OrchestratorOptions {
   maxRepairAttempts?: number;
   createRunId?: () => string;
   now?: () => string;
+  onProgress?: (run: RemediationRun) => void;
 }
 
 const BLOCKING_SEVERITIES = new Set<Severity>(["high", "critical"]);
@@ -107,6 +108,7 @@ export class RemediationOrchestrator {
       checks: [], evidence: [], events: [], repairAttempts: 0,
       maxRepairAttempts: this.maxRepairAttempts,
     };
+    this.options.onProgress?.(run);
 
     const triage = await this.options.triageAgent.triage(alert);
     run.triage = triage;
@@ -202,6 +204,7 @@ export class RemediationOrchestrator {
   private transition(run: RemediationRun, state: RunState, message: string): void {
     run.state = state;
     run.events.push({ state, message, recordedAt: this.now() });
+    this.options.onProgress?.(run);
   }
 
   private addEvidence(run: RemediationRun, evidence: Omit<Evidence, "recordedAt">): void {
