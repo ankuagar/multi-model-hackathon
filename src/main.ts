@@ -1,4 +1,5 @@
 import "./style.css";
+import { createClient } from "@base44/sdk";
 import {
   RemediationOrchestrator,
   type AdversarialReviewer,
@@ -122,6 +123,10 @@ let selectedAlert = examples[0].alert;
 const profileFor = (alert: SecurityAlert) => examples.find((example) => example.alert.id === alert.id) ?? examples[0];
 const HISTORY_KEY = "patchforge.run-history.v1";
 const HISTORY_LIMIT = 20;
+const base44 = createClient({ appId: "6acbf97133e2a4b9dbf4bd31" });
+type AgentMode = "fixture" | "live";
+let agentMode: AgentMode = "fixture";
+let signedInUser: { email?: string; full_name?: string } | null = null;
 
 function loadRunHistory(): RemediationRun[] {
   try {
@@ -236,6 +241,13 @@ const htmlEscapes: Record<string, string> = {
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
 };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => htmlEscapes[char]);
+const errorMessage = (error: unknown) => {
+  if (error && typeof error === "object") {
+    const apiMessage = (error as { response?: { data?: { error?: unknown } } }).response?.data?.error;
+    if (typeof apiMessage === "string") return apiMessage;
+  }
+  return error instanceof Error ? error.message : "The request failed.";
+};
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app root");
@@ -244,13 +256,17 @@ app.innerHTML = `
   <div class="shell">
     <header class="topbar">
       <a class="brand" href="#" aria-label="PatchForge home"><span class="mark">P</span><span>PatchForge</span></a>
-      <span class="tag">Interactive fixture · no live integrations</span>
+<div class="topbar-tools"><span id="auth-status" class="tag">Checking Base44 session…</span><button id="auth-action" class="button small-button secondary" type="button" hidden></button></div>
     </header>
     <main>
+      <section id="login-box" class="panel login-box" hidden>
+        <div><span class="overline">Live agent access</span><h2>Sign in to Base44</h2><p class="muted">Live model calls use the OpenRouter key configured in this app. Fixture mode remains available without signing in.</p></div>
+        <form id="login-form" class="login-form"><label>Email<input id="login-email" type="email" autocomplete="username" required /></label><label>Password<input id="login-password" type="password" autocomplete="current-password" required /></label><button class="button primary" type="submit">Sign in</button><p id="login-error" class="login-error" role="alert"></p></form>
+      </section>
       <section class="hero">
         <div class="eyebrow">Security remediation, with evidence</div>
         <h1>Fix the alert.<br />Show the proof.</h1>
-        <p class="intro">Choose a seeded security alert and run it through triage, repair, independent review, and deterministic fixture checks. Inspect the evidence, then record a human approval.</p>
+        <p class="intro">Route a security alert through triage, repair, independent review, and deterministic checks. Choose fixture mode for the guided demo or OpenRouter for real model calls. Inspect the evidence, then record a human approval.</p>
       </section>
       <section class="workspace">
         <aside class="column">
@@ -269,7 +285,7 @@ app.innerHTML = `
           </article>
           <article class="panel safety-note">
             <span class="overline">Demo boundaries</span>
-            <p>All vulnerability examples use fixture agents and diff-marker checks. Nothing connects to a repository, executes an exploit, or runs a real security scan.</p>
+            <p id="mode-note">Fixture mode: seeded agents and diff-marker checks. Nothing connects to a repository, executes an exploit, or runs a real security scan.</p>
           </article>
         </aside>
         <section class="column main-column">
@@ -286,10 +302,14 @@ app.innerHTML = `
               </select>
               <small id="scenario-help">Fixture agents produce a safe patch and pass the checks.</small>
             </label>
+            <label class="scenario-control" for="agent-mode">Agent provider
+              <select id="agent-mode"><option value="fixture">Fixture agents (free demo)</option><option value="live">OpenRouter models (free endpoints)</option></select>
+              <small id="agent-mode-help">Uses simulated agents and seeded outcomes.</small>
+            </label>
             <div id="pipeline" class="pipeline" aria-label="Six-step remediation workflow" aria-live="polite"></div>
             <div class="actions">
               <button id="start-run" class="button primary" type="button">Start demo run</button>
-              <button id="approve-run" class="button secondary" type="button" disabled>Approve demo patch</button>
+              <button id="approve-run" class="button secondary" type="button" disabled>Approve patch</button>
             </div>
             <p id="action-note" class="action-note">Approval records a decision in this page only. It does not merge or deploy code.</p>
             <div id="exception-box" class="exception-box" hidden>
@@ -318,10 +338,10 @@ app.innerHTML = `
 `;
 
 const pipelineSteps = [
-  { state: "triaged", label: "Understand the alert", description: "Classify the issue and locate affected code." },
+  { state: "triaged", label: "Understand the alert", description: "Classify the issue and identify its reported location." },
   { state: "patched", label: "Draft a fix", description: "Propose a focused change for this vulnerability." },
   { state: "reviewed", label: "Challenge the fix", description: "An independent reviewer looks for weaknesses." },
-  { state: "validating", label: "Run safety checks", description: "Fixture checks inspect the patch for expected changes." },
+  { state: "validating", label: "Run safety checks", description: "Deterministic checks examine the proposed change." },
   { state: "awaiting_human", label: "Review the evidence", description: "You inspect the diff, findings, and check results." },
   { state: "approved", label: "Record your decision", description: "Approval is saved in the local audit trail." },
 ] as const;
@@ -348,6 +368,127 @@ const alertDescription = document.querySelector<HTMLParagraphElement>("#alert-de
 const alertRepository = document.querySelector<HTMLElement>("#alert-repository")!;
 const alertLocation = document.querySelector<HTMLElement>("#alert-location")!;
 const alertRule = document.querySelector<HTMLElement>("#alert-rule")!;
+const agentModeSelect = document.querySelector<HTMLSelectElement>("#agent-mode")!;
+const agentModeHelp = document.querySelector<HTMLElement>("#agent-mode-help")!;
+const modeNote = document.querySelector<HTMLElement>("#mode-note")!;
+const loginBox = document.querySelector<HTMLElement>("#login-box")!;
+const authStatus = document.querySelector<HTMLElement>("#auth-status")!;
+const authAction = document.querySelector<HTMLButtonElement>("#auth-action")!;
+const loginForm = document.querySelector<HTMLFormElement>("#login-form")!;
+const loginError = document.querySelector<HTMLElement>("#login-error")!;
+
+function setAuthUser(user: typeof signedInUser) {
+  signedInUser = user;
+  authStatus.textContent = user ? `Signed in · ${user.email ?? user.full_name ?? "Base44 user"}` : "Not signed in";
+  authAction.hidden = !user;
+  authAction.textContent = "Sign out";
+  loginBox.hidden = !!user || agentMode !== "live";
+  startButton.disabled = agentMode === "live" && !user;
+}
+
+void base44.auth.me().then((user) => setAuthUser(user ?? null)).catch(() => setAuthUser(null));
+
+authAction.addEventListener("click", () => base44.auth.logout(window.location.href));
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  loginError.textContent = "";
+  const submit = loginForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  submit.disabled = true;
+  try {
+    const result = await base44.auth.loginViaEmailPassword(
+      document.querySelector<HTMLInputElement>("#login-email")!.value,
+      document.querySelector<HTMLInputElement>("#login-password")!.value,
+    );
+    setAuthUser(result.user ?? null);
+  } catch (error) {
+    loginError.textContent = errorMessage(error);
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+agentModeSelect.addEventListener("change", () => {
+  agentMode = agentModeSelect.value as AgentMode;
+  scenarioSelect.disabled = agentMode === "live";
+  scenarioHelp.textContent = agentMode === "live"
+    ? "Live mode uses the server-side triage, repair, and review model assignments."
+    : scenarioDescriptions[demoScenario];
+  agentModeHelp.textContent = agentMode === "live"
+    ? "Calls OpenRouter models through the Base44 backend. Free model endpoints may be rate-limited. No repository source is sent or executed."
+    : "Uses simulated agents and seeded outcomes.";
+  modeNote.textContent = agentMode === "live"
+    ? "Live mode sends only the selected alert metadata to OpenRouter through a server-side Base44 function. It does not fetch repository source, execute code, run tests, or run a scanner. Agent output is untrusted until human review."
+    : "Fixture mode: seeded agents and diff-marker checks. Nothing connects to a repository, executes an exploit, or runs a real security scan.";
+  loginBox.hidden = agentMode !== "live" || !!signedInUser;
+  startButton.textContent = agentMode === "live" ? "Run live agents" : "Start demo run";
+  startButton.disabled = agentMode === "live" && !signedInUser;
+});
+
+async function callLiveAgent(agent: "triage" | "repair" | "review", payload: Record<string, unknown>) {
+  const response = await base44.functions.invoke("patchforge-agent", { agent, ...payload });
+  return response.data as { agent: string; model: string; result: Record<string, unknown> };
+}
+
+function makeLiveOrchestrator() {
+  const modelNames: NonNullable<RemediationRun["agentModels"]> = {};
+  return new RemediationOrchestrator({
+    triageAgent: {
+      async triage(alert) {
+        const response = await callLiveAgent("triage", { alert });
+        modelNames.triage = response.model;
+        const result = response.result;
+        return {
+          vulnerabilityClass: String(result.vulnerabilityClass ?? "Unclassified"),
+          summary: `${String(result.summary ?? "No triage summary provided.")}\nModel: ${response.model}`,
+          affectedFiles: Array.isArray(result.affectedFiles) ? result.affectedFiles.map(String).slice(0, 20) : [alert.filePath],
+          complexity: ["low", "medium", "high"].includes(String(result.complexity)) ? result.complexity as "low" | "medium" | "high" : "high",
+          confidence: typeof result.confidence === "number" ? Math.max(0, Math.min(1, result.confidence)) : 0,
+        };
+      },
+    },
+    repairAgent: {
+      async propose(alert, triage, feedback): Promise<Patch> {
+        const response = await callLiveAgent("repair", { alert, triage, feedback });
+        modelNames.repair = response.model;
+        const result = response.result;
+        return {
+          changedFiles: Array.isArray(result.changedFiles) ? result.changedFiles.map(String).slice(0, 20) : [],
+          rationale: `${String(result.rationale ?? "No rationale provided.")}\nModel: ${response.model}`,
+          diff: String(result.diff ?? "").slice(0, 12000),
+        };
+      },
+    },
+    reviewer: {
+      async review(alert, patch) {
+        const response = await callLiveAgent("review", { alert, patch });
+        modelNames.reviewer = response.model;
+        const findings = Array.isArray(response.result.findings) ? response.result.findings : [];
+        return findings.slice(0, 20).map((item) => {
+          const finding = item as Record<string, unknown>;
+          const severity = String(finding.severity);
+          return {
+            severity: ["low", "medium", "high", "critical"].includes(severity) ? severity as SecurityAlert["severity"] : "high",
+            title: String(finding.title ?? "Reviewer finding"),
+            detail: `[${response.model}] ${String(finding.detail ?? "No detail provided.")}`,
+            filePath: typeof finding.filePath === "string" ? finding.filePath : undefined,
+          };
+        });
+      },
+    },
+    validator: {
+      async validate(alert, patch): Promise<CheckResult[]> {
+        const fileListed = patch.changedFiles.includes(alert.filePath);
+        const hasDiff = patch.diff.includes(`--- a/${alert.filePath}`) && patch.diff.includes(`+++ b/${alert.filePath}`);
+        return [
+          { name: "Patch content present", passed: patch.diff.trim().length > 0, summary: patch.diff.trim() ? "The model returned a non-empty diff." : "No diff was produced; source context may be required.", details: "This is a structural check, not a test run." },
+          { name: "Alert file referenced", passed: fileListed && hasDiff, summary: fileListed && hasDiff ? "The alert file appears in the changed-file list and diff headers." : "The alert file is missing from the changed-file list or diff headers.", details: "No repository was checked out. Human review must verify patch applicability." },
+        ];
+      },
+    },
+    maxRepairAttempts: 2,
+    onProgress: (run) => { run.mode = "live"; run.agentModels = { ...modelNames }; currentRun = run; renderRun(run); },
+  });
+}
 
 function renderPipeline(run?: RemediationRun) {
   const eventStates = new Set(run?.events.map((event) => event.state) ?? []);
@@ -418,7 +559,10 @@ function exportCurrentRun() {
   const bundle = {
     format: "patchforge-evidence-v1",
     exportedAt: new Date().toISOString(),
-    limitations: "Client-side demo fixture only. This bundle does not prove system security and contains no live repository or scanner results.",
+    limitations: currentRun.mode === "live"
+      ? "Live model calls used alert metadata only. No repository source, tests, scanner, exploit attempt, pull request, merge, or deployment. Human approval is recorded locally; this evidence does not prove system security."
+      : "Client-side demo fixture only. This bundle does not prove system security and contains no live repository or scanner results.",
+    mode: currentRun.mode ?? "fixture",
     run: currentRun,
   };
   const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
@@ -449,7 +593,7 @@ function renderRun(run?: RemediationRun) {
     runState.className = "state-badge";
     attempts.textContent = "";
     approveButton.disabled = true;
-    approveButton.textContent = "Approve demo patch";
+    approveButton.textContent = agentMode === "live" ? "Approve patch" : "Approve demo patch";
     exceptionBox.hidden = true;
     actionNote.textContent = "Approval records a decision in this page only. It does not merge or deploy code.";
     evidence.textContent = "Start the demo to see triage notes, review results, checks, and the proposed diff.";
@@ -473,7 +617,7 @@ function renderRun(run?: RemediationRun) {
     ? "Approval recorded"
     : run.state === "blocked"
       ? "Approve with exception"
-      : "Approve demo patch";
+      : run.mode === "live" ? "Approve patch" : "Approve demo patch";
   actionNote.textContent = run.state === "awaiting_human"
     ? "Review the diff and evidence before recording approval. This action stays in the browser."
     : run.state === "blocked"
@@ -485,14 +629,17 @@ function renderRun(run?: RemediationRun) {
     const badgeClass = item.passed === true ? "pass" : item.passed === false ? "fail" : "neutral";
     return `<li class="evidence-item"><span class="result ${badgeClass}">${badge}</span><div><strong>${escapeHtml(item.producer)}</strong><p>${escapeHtml(item.summary)}</p><small>${escapeHtml(new Date(item.recordedAt).toLocaleTimeString())}</small></div></li>`;
   }).join("");
-  const triageHtml = run.triage ? `<div class="result-card"><div class="section-head"><strong>Triage</strong><span class="muted small">${Math.round(run.triage.confidence * 100)}% fixture confidence</span></div><p>${escapeHtml(run.triage.summary)}</p></div>` : "";
+  const triageHtml = run.triage ? `<div class="result-card"><div class="section-head"><strong>Triage</strong><span class="muted small">${Math.round(run.triage.confidence * 100)}% confidence</span></div><p>${escapeHtml(run.triage.summary)}</p></div>` : "";
   const findingsHtml = run.reviewFindings.length
     ? `<div class="result-card"><strong>Reviewer findings</strong><ul>${run.reviewFindings.map((finding) => `<li>${escapeHtml(finding.severity.toUpperCase())}: ${escapeHtml(finding.title)} — ${escapeHtml(finding.detail)}</li>`).join("")}</ul></div>`
-    : `<div class="result-card"><strong>Adversarial review</strong><p>No blocking findings in the seeded review.</p></div>`;
+    : `<div class="result-card"><strong>Adversarial review</strong><p>${run.mode === "live" ? "No blocking findings returned. The reviewer saw only alert metadata and the proposed diff." : "No blocking findings in the seeded review."}</p></div>`;
   const checksHtml = run.checks.map((check) => `<div class="check-row"><span class="check-icon ${check.passed ? "pass" : "fail"}">${check.passed ? "✓" : "!"}</span><div><strong>${escapeHtml(check.name)}</strong><p>${escapeHtml(check.summary)}</p>${check.details ? `<small>${escapeHtml(check.details)}</small>` : ""}</div></div>`).join("");
   const diffHtml = run.patch ? `<div class="result-card"><div class="section-head"><strong>Proposed diff</strong><span class="muted small">${escapeHtml(run.patch.changedFiles.join(", "))}</span></div><pre class="diff">${escapeHtml(run.patch.diff)}</pre><p class="muted">${escapeHtml(run.patch.rationale)}</p></div>` : "";
+  const modelsHtml = run.mode === "live" && run.agentModels
+    ? `<div class="result-card"><strong>Model routing</strong><ul>${Object.entries(run.agentModels).map(([role, model]) => `<li>${escapeHtml(role)}: ${escapeHtml(model ?? "pending")}</li>`).join("")}</ul><small>Role-specific model assignments are recorded with this run.</small></div>`
+    : "";
   const eventHtml = `<details class="event-details"><summary>Run timeline (${run.events.length} events)</summary><ol>${run.events.map((event) => `<li><strong>${escapeHtml(event.state.replaceAll("_", " "))}</strong><span>${escapeHtml(event.message)}</span></li>`).join("")}</ol></details>`;
-  evidence.innerHTML = `${triageHtml}${findingsHtml}<div class="result-card"><strong>Recorded evidence</strong><ul class="evidence-list">${evidenceHtml}</ul></div><div class="result-card"><strong>Deterministic fixture checks</strong>${checksHtml || "<p>No check output.</p>"}</div>${diffHtml}${eventHtml}`;
+  evidence.innerHTML = `${triageHtml}${modelsHtml}${findingsHtml}<div class="result-card"><strong>Recorded evidence</strong><ul class="evidence-list">${evidenceHtml}</ul></div><div class="result-card"><strong>${run.mode === "live" ? "Deterministic structural checks" : "Deterministic fixture checks"}</strong>${checksHtml || "<p>No check output.</p>"}</div>${diffHtml}${eventHtml}`;
   renderHistory();
 }
 
@@ -508,7 +655,7 @@ historySelect.addEventListener("change", () => {
   renderAlert(selectedAlert);
   exceptionReason.value = "";
   renderRun(currentRun);
-  startButton.textContent = "Run demo again";
+    startButton.textContent = agentMode === "live" ? "Run live agents again" : "Run demo again";
 });
 
 alertSelect.addEventListener("change", () => {
@@ -519,7 +666,7 @@ alertSelect.addEventListener("change", () => {
   renderAlert(selectedAlert);
   currentRun = undefined;
   renderRun();
-  startButton.textContent = "Start demo run";
+  startButton.textContent = agentMode === "live" ? "Run live agents" : "Start demo run";
 });
 
 exportButton.addEventListener("click", exportCurrentRun);
@@ -531,6 +678,11 @@ exceptionReason.addEventListener("input", () => {
 });
 
 startButton.addEventListener("click", async () => {
+  if (agentMode === "live" && !signedInUser) {
+    loginBox.hidden = false;
+    loginError.textContent = "Sign in before starting a metered live-agent run.";
+    return;
+  }
   startButton.disabled = true;
   scenarioSelect.disabled = true;
   alertSelect.disabled = true;
@@ -539,25 +691,27 @@ startButton.addEventListener("click", async () => {
   approveButton.disabled = true;
   currentRun = undefined;
   renderHistory();
-  evidence.textContent = "Running the selected fixture scenario…";
+  evidence.textContent = agentMode === "live" ? "Calling OpenRouter triage, repair, and independent review models…" : "Running the selected fixture scenario…";
   exceptionBox.hidden = true;
   exceptionReason.value = "";
-  startButton.textContent = "Running fixture agents…";
+  startButton.textContent = agentMode === "live" ? "Running live agents…" : "Running fixture agents…";
   runState.textContent = "running";
   runState.className = "state-badge running";
   try {
-    currentRun = await orchestrator.run(selectedAlert);
+    const activeOrchestrator = agentMode === "live" ? makeLiveOrchestrator() : orchestrator;
+    currentRun = await activeOrchestrator.run(selectedAlert);
+    currentRun.mode = agentMode;
     saveRun(currentRun);
     renderRun(currentRun);
-    startButton.textContent = "Run demo again";
+    startButton.textContent = agentMode === "live" ? "Run live agents again" : "Run demo again";
   } catch (error) {
     runState.textContent = "error";
     runState.className = "state-badge blocked";
-    evidence.textContent = error instanceof Error ? error.message : "The demo run failed.";
-    startButton.textContent = "Retry demo";
+    evidence.textContent = errorMessage(error);
+    startButton.textContent = agentMode === "live" ? "Retry live agents" : "Retry demo";
   } finally {
     startButton.disabled = false;
-    scenarioSelect.disabled = false;
+    scenarioSelect.disabled = agentMode === "live";
     alertSelect.disabled = false;
     historySelect.disabled = false;
     renderHistory();

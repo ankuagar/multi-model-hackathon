@@ -48,6 +48,8 @@ export interface Evidence {
 export interface RunEvent { state: RunState; message: string; recordedAt: string }
 export interface RemediationRun {
   id: string;
+  mode?: "fixture" | "live";
+  agentModels?: { triage?: string; repair?: string; reviewer?: string };
   alert: SecurityAlert;
   state: RunState;
   triage?: Triage;

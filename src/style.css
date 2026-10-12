@@ -14,6 +14,8 @@ body {
 button { font: inherit; }
 .shell { max-width: 1280px; margin: 0 auto; padding: 30px 28px 56px; }
 .topbar { display: flex; align-items: center; justify-content: space-between; padding-bottom: 60px; }
+.topbar-tools { display: flex; align-items: center; gap: 8px; }
+.small-button { padding: 8px 11px; font-size: 11px; }
 .brand { display: flex; align-items: center; gap: 12px; color: #eef4ee; text-decoration: none; font-weight: 720; letter-spacing: -.03em; }
 .mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #b7f29a; color: #18221a; font-size: 15px; font-weight: 900; }
 .tag, .state-badge { border: 1px solid #33423a; color: #b0c0b4; border-radius: 999px; padding: 8px 12px; font-size: 12px; text-transform: capitalize; }
@@ -24,6 +26,13 @@ h1 { margin: 16px 0; font-size: clamp(42px, 7vw, 68px); line-height: 1.01; lette
 .workspace { display: grid; grid-template-columns: minmax(260px, .75fr) minmax(0, 1.65fr); gap: 16px; align-items: start; }
 .column { display: grid; gap: 16px; min-width: 0; }
 .panel { border: 1px solid #2c3a31; border-radius: 16px; background: rgba(22, 31, 25, .92); padding: 22px; }
+.login-box { display: grid; grid-template-columns: 1fr minmax(280px, .85fr); gap: 22px; align-items: center; margin: 0 0 24px; }
+.login-box h2 { margin-bottom: 6px; }
+.login-box p { margin: 6px 0; font-size: 12px; line-height: 1.5; }
+.login-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 9px; align-items: end; }
+.login-form label { display: grid; gap: 5px; color: #b6c4b9; font-size: 10px; }
+.login-form input { min-width: 0; border: 1px solid #405044; border-radius: 8px; background: #121b15; color: #e0e9e1; padding: 9px 10px; font: inherit; font-size: 11px; }
+.login-form .login-error { grid-column: 1 / -1; color: #ffc18f; min-height: 16px; }
 .section-head, .run-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .severity { color: #ffc18f; background: #3b2b20; border-radius: 999px; padding: 6px 9px; font: 700 10px ui-monospace, monospace; }
 .alert-picker { margin-top: 14px; }
@@ -104,7 +113,9 @@ footer { margin-top: 24px; color: #748278; font-size: 11px; }
 @media (max-width: 600px) {
   .shell { padding: 22px 16px 40px; }
   .topbar { align-items: flex-start; gap: 14px; padding-bottom: 45px; }
+  .topbar-tools { align-items: flex-end; flex-direction: column; }
   .tag { max-width: 175px; text-align: right; }
+  .login-box, .login-form { grid-template-columns: 1fr; }
   .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .panel { padding: 18px; }
   .run-heading { align-items: flex-start; flex-direction: column; }
